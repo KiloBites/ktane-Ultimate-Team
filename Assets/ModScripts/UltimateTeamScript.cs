@@ -149,7 +149,7 @@ public class UltimateTeamScript : MonoBehaviour
         cannotPress = false;
         bombCasing.transform.parent.localScale = Vector3.one;
         throbber.transform.parent.localScale = Vector3.zero;
-            
+
 
         generateModule();
     }
@@ -183,32 +183,32 @@ public class UltimateTeamScript : MonoBehaviour
 
     void generateModule()
     {
-    tryagain:
+        tryagain:
 
-        var eligableModules = allMods.ToList();
+        var eligibleModules = allMods.ToList();
 
         // Step 1: pick 11 modules that will be on the virtual bomb
         virtualBomb.Clear();
         if (Range(0, 4) != 0)
         {
-            var randomBoss = Enumerable.Range(0, eligableModules.Count).Where(x => eligableModules[x].BossStatus == "FullBoss" || eligableModules[x].BossStatus == "SemiBoss" && eligableModules[x].X != 0 && eligableModules[x].Y != 0).PickRandom();
+            var randomBoss = Enumerable.Range(0, eligibleModules.Count).Where(x => eligibleModules[x].BossStatus == "FullBoss" || eligibleModules[x].BossStatus == "SemiBoss" && (eligibleModules[x].X != 0 || eligibleModules[x].Y != 0)).PickRandom();
 
-            virtualBomb.Add(eligableModules[randomBoss]);
+            virtualBomb.Add(eligibleModules[randomBoss]);
 
-            eligableModules.RemoveAt(randomBoss);
+            eligibleModules.RemoveAt(randomBoss);
         }
-            
+
         if (Range(0, 2) != 0)
         {
-            var randomNeedy = Enumerable.Range(0, eligableModules.Count).Where(x => eligableModules[x].Type == "Needy" && eligableModules[x].X != 0 && eligableModules[x].Y != 0).PickRandom();
+            var randomNeedy = Enumerable.Range(0, eligibleModules.Count).Where(x => eligibleModules[x].Type == "Needy" && (eligibleModules[x].X != 0 || eligibleModules[x].Y != 0)).PickRandom();
 
-            virtualBomb.Add(eligableModules[randomNeedy]);
+            virtualBomb.Add(eligibleModules[randomNeedy]);
 
-            eligableModules.RemoveAt(randomNeedy);
+            eligibleModules.RemoveAt(randomNeedy);
         }
-            
 
-        var eligibleRemainingModules = eligableModules.Where(m => m.Type == "Regular" && m.BossStatus != "FullBoss" && m.BossStatus != "SemiBoss" && m.X != 0 && m.Y != 0).ToList();
+
+        var eligibleRemainingModules = eligibleModules.Where(m => m.Type == "Regular" && m.BossStatus != "FullBoss" && m.BossStatus != "SemiBoss" && (m.X != 0 || m.Y != 0)).ToList();
         while (virtualBomb.Count < 11)
         {
             var ix = Range(0, eligibleRemainingModules.Count);
@@ -268,8 +268,8 @@ public class UltimateTeamScript : MonoBehaviour
         foreach (string modID in Bomb.GetModuleIDs())
             realBomb.AddRange(allMods.Where(m => m.ModuleID == modID));
 
-        
-            
+
+
 
         experts = Enumerable.Range(0, profilePictures.Length).ToArray().Shuffle();
 

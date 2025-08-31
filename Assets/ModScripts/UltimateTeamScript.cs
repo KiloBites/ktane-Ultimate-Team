@@ -5,6 +5,7 @@ using System.Linq;
 using KModkit;
 using UnityEngine;
 using UnityEngine.UI;
+using Newtonsoft.Json;
 
 using static UnityEngine.Debug;
 using static UnityEngine.Random;
@@ -55,7 +56,6 @@ public class UltimateTeamScript : MonoBehaviour
     private bool[] needyIx = new bool[12];
     private bool[] selected = new bool[6];
     private bool bombFlipped, cannotPress, rightMenu;
-    private static string connected;
 
     private Image[][] renders;
 
@@ -127,43 +127,33 @@ public class UltimateTeamScript : MonoBehaviour
 
         bombCasing.transform.parent.localScale = Vector3.zero;
 
-        if (spriteSheet == null && allMods == null)
-            StartCoroutine(setup());
+        UltimateTeamService.Instance.WaitForFetch(onFetched);
+    }
+
+    void onFetched(bool error)
+    {
+        var instance = UltimateTeamService.Instance;
+
+        if (error)
+        {
+            allMods = JsonConvert.DeserializeObject<Root>(instance.offlineJson.text).KtaneModules;
+            spriteSheet = instance.offlineSprite;
+        }
         else
         {
-            bombCasing.transform.parent.localScale = Vector3.one;
-            throbber.transform.parent.localScale = Vector3.zero;
-            Log($"[Ultimate Team #{moduleId}] {connected}");
-            generateModule();
-        }
-    }
-
-    IEnumerator setup()
-    {
-        var utService = FindObjectOfType<UltimateTeamService>();
-
-        if (utService == null)
-            throw new Exception("Ultimate Team cannot find the Ultimate Team Service prefab!");
-
-        yield return new WaitUntil(() => utService.loaded);
-
-        if (utService.connectedJson && utService.connectedSprite)
+            allMods = instance.allMods;
+            spriteSheet = instance.spriteSheet;
             StartCoroutine(LEDFlash());
+        }
+
         cannotPress = false;
-
-        connected = utService.connectedJson && utService.connectedSprite
-            ? "This module is connected to the internet, grabbing the latest modules possible from the repo."
-            : "This module is not connected to the internet and therefore will use its backup from 10/14/23.";
-
-        Log($"[Ultimate Team #{moduleId}] {connected}");
-
-        allMods = utService.allMods;
-        spriteSheet = utService.spriteSheet;
         bombCasing.transform.parent.localScale = Vector3.one;
         throbber.transform.parent.localScale = Vector3.zero;
-        generateModule();
+            
 
+        generateModule();
     }
+
 
     void mainButtonPress(int pos)
     {
@@ -193,15 +183,32 @@ public class UltimateTeamScript : MonoBehaviour
 
     void generateModule()
     {
-        tryagain:
+    tryagain:
+
+        var eligableModules = allMods.ToList();
 
         // Step 1: pick 11 modules that will be on the virtual bomb
         virtualBomb.Clear();
         if (Range(0, 4) != 0)
-            virtualBomb.Add(allMods.Where(m => m.BossStatus == "FullBoss" || m.BossStatus == "SemiBoss" && m.X != 0 && m.Y != 0).PickRandom());
+        {
+            var randomBoss = Enumerable.Range(0, eligableModules.Count).Where(x => eligableModules[x].BossStatus == "FullBoss" || eligableModules[x].BossStatus == "SemiBoss" && eligableModules[x].X != 0 && eligableModules[x].Y != 0).PickRandom();
+
+            virtualBomb.Add(eligableModules[randomBoss]);
+
+            eligableModules.RemoveAt(randomBoss);
+        }
+            
         if (Range(0, 2) != 0)
-            virtualBomb.Add(allMods.Where(m => m.Type == "Needy" && m.X != 0 && m.Y != 0).PickRandom());
-        var eligibleRemainingModules = allMods.Where(m => m.Type == "Regular" && m.BossStatus != "FullBoss" && m.BossStatus != "SemiBoss" && m.X != 0 && m.Y != 0).ToList();
+        {
+            var randomNeedy = Enumerable.Range(0, eligableModules.Count).Where(x => eligableModules[x].Type == "Needy" && eligableModules[x].X != 0 && eligableModules[x].Y != 0).PickRandom();
+
+            virtualBomb.Add(eligableModules[randomNeedy]);
+
+            eligableModules.RemoveAt(randomNeedy);
+        }
+            
+
+        var eligibleRemainingModules = eligableModules.Where(m => m.Type == "Regular" && m.BossStatus != "FullBoss" && m.BossStatus != "SemiBoss" && m.X != 0 && m.Y != 0).ToList();
         while (virtualBomb.Count < 11)
         {
             var ix = Range(0, eligibleRemainingModules.Count);
@@ -313,11 +320,6 @@ public class UltimateTeamScript : MonoBehaviour
         var sprite = Sprite.Create(spriteSheet as Texture2D, new Rect(32 * module.X, 32 * (maxY - module.Y), 32, 32), new Vector2(0.5f, 0.5f));
         sprite.texture.filterMode = FilterMode.Point;
         return sprite;
-    }
-
-    private bool isAllowed(int modIx)
-    {
-        return modIx != -1 && allMods[modIx].ExpertDifficulty != "Trivial" && allMods[modIx].ExpertDifficulty != "VeryEasy";
     }
 
     void calculations()

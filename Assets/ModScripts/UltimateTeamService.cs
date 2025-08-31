@@ -1,10 +1,13 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using Newtonsoft.Json;
 using static UnityEngine.Debug;
+using System.Linq;
 
+[RequireComponent(typeof(KMService))]
 public class UltimateTeamService : MonoBehaviour
 {
     public bool loaded = false;
@@ -14,58 +17,83 @@ public class UltimateTeamService : MonoBehaviour
     public Texture spriteSheet;
     public List<KtaneModule> allMods;
 
-    void Start()
+    public static UltimateTeamService Instance { get; private set; }
+
+    private bool isError;
+
+    void Awake()
     {
-        name = "Ultimate Team Service";
-        StartCoroutine(getRawJson());
-        StartCoroutine(getSpriteSheet());
+        Instance = this;
+
+        StartCoroutine(FetchRepo());
+        StartCoroutine(FetchIconSprite());
     }
 
-    IEnumerator getRawJson()
+    IEnumerator FetchRepo()
     {
-        Log("[Ultimate Team Service] Downloading JSON...");
-
-        string raw;
-        var request = UnityWebRequest.Get("https://ktane.timwi.de/json/raw");
-
-        yield return request.SendWebRequest();
-
-        if (request.error != null)
+        try
         {
-            Log("[Ultimate Team Service] JSON download failed. Using raw JSON from 8/12/23.");
-            raw = offlineJson.text;
+            Log("[Ultimate Team Service] Fetching repo data");
+
+            using (var req = UnityWebRequest.Get("https://ktane.timwi.de/json/raw"))
+            {
+                yield return req.SendWebRequest();
+
+                if (req.isHttpError || req.isNetworkError)
+                {
+                    isError = true;
+                    Log("[Ultimate Team Service] Failed to connect to repo. Using JSON backup from 8/31/2025");
+                }
+                else
+                    Log($"[Ultimate Team Service] Connected to repo successfully. Obtained {JsonConvert.DeserializeObject<Root>(req.downloadHandler.text).KtaneModules.Count(x => !new[] { "Widget", "Appendix" }.Contains(x.Type))}");
+
+                allMods = JsonConvert.DeserializeObject<Root>(isError ? offlineJson.text : req.downloadHandler.text).KtaneModules.Where(x => !new[] { "Widget", "Appendix" }.Contains(x.Type)).ToList();
+
+                if (isError)
+                    yield break;
+            }
         }
-        else
+        finally
         {
             connectedJson = true;
-            Log("[Ultimate Team Service] JSON download succeeded.");
-            raw = request.downloadHandler.text;
         }
-
-        allMods = JsonConvert.DeserializeObject<Root>(raw).KtaneModules;
-
-        while (spriteSheet == null)
-            yield return null;
-        loaded = true;
     }
 
-    IEnumerator getSpriteSheet()
+    IEnumerator FetchIconSprite()
     {
-        Log("[Ultimate Team Service] Downloading Sprite Sheet...");
-
-        var request = UnityWebRequestTexture.GetTexture("https://ktane.timwi.de/iconsprite");
-        yield return request.SendWebRequest();
-
-        if (request.error != null)
+        try
         {
-            Log("[Ultimate Team Service] Sprite sheet download failed. Using spritesheet from 10/14/23.");
-            spriteSheet = offlineSprite;
+            Log("[Ultimate Team Service] Fetching icon sprite");
+
+            using (var req = UnityWebRequestTexture.GetTexture("https://ktane.timwi.de/iconsprite"))
+            {
+                yield return req.SendWebRequest();
+
+                if (req.isHttpError || req.isNetworkError)
+                {
+                    isError = true;
+                    Log("[Ultimate Team Service] Failed to fetch icon sprite. Using backup from 8/31/2025");
+                }
+                else
+                    Log($"[Ultimate Team Service] Icon sprite fetch successful ({DownloadHandlerTexture.GetContent(req).width}x{DownloadHandlerTexture.GetContent(req).height})");
+
+                spriteSheet = isError ? offlineSprite : DownloadHandlerTexture.GetContent(req);
+
+                if (isError)
+                    yield break;
+            }
         }
-        else
+        finally
         {
-            Log("[Ultimate Team Service] Sprite sheet download succeeded.");
             connectedSprite = true;
-            spriteSheet = ((DownloadHandlerTexture) request.downloadHandler).texture;
         }
+    }
+
+    public void WaitForFetch(Action<bool> callback) => StartCoroutine(WaitForFetchRoutine(callback));
+
+    IEnumerator WaitForFetchRoutine(Action<bool> callback)
+    {
+        yield return new WaitUntil(() => connectedJson && connectedSprite);
+        callback.Invoke(isError);
     }
 }
